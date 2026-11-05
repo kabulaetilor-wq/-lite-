@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <title>Élite Sniper</title>
+  <style>
+    :root { --accent:#ffb347; --ink:#e9efe0; --panel:rgba(18,24,14,.62); }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
+    html,body { margin:0; height:100%; overflow:hidden; background:#000; overscroll-behavior:none;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); touch-action:none; }
+    canvas#gl, canvas#scope { position:fixed; inset:0; width:100%; height:100%; display:block; }
+    canvas#scope { pointer-events:none; z-index:2; display:none; }
+    #touch { position:fixed; inset:0; z-index:1; touch-action:none; }
+    .hidden { display:none !important; }
+
+    /* ---------- HUD ---------- */
+    #hud { position:fixed; inset:0; z-index:3; pointer-events:none; }
+    #hud > * { position:absolute; }
+    #topleft { left:max(2.5vmin, env(safe-area-inset-left)); top:2.5vmin; display:flex; flex-direction:column; gap:.8vmin; }
+    .chip { background:var(--panel); border:1px solid rgba(255,255,255,.18); border-radius:8px; padding:.7vmin 1.6vmin;
+      font-size:2.6vmin; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+    .chip small { font-weight:500; opacity:.75; margin-right:.8vmin; }
+    #wind { display:flex; align-items:center; gap:1vmin; }
+    #windarrow { width:5vmin; height:5vmin; transition:transform .15s linear; }
+    #radar { right:max(2.5vmin, env(safe-area-inset-right)); top:2.5vmin; width:17vmin; height:17vmin; border-radius:50%; }
+    #dist { right:max(2.5vmin, env(safe-area-inset-right)); top:21vmin; }
+    #zoomlabel { right:max(2.5vmin, env(safe-area-inset-right)); top:28vmin; }
+    #status { left:50%; bottom:2.5vmin; transform:translateX(-50%); width:36vmin; display:flex; flex-direction:column; gap:1vmin; align-items:stretch; }
+    #ammo { text-align:center; font-size:3.4vmin; font-weight:800; letter-spacing:.1em; text-shadow:0 1px 3px #000; }
+    .bar { height:1.6vmin; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.3); border-radius:4px; overflow:hidden; }
+    .bar > div { height:100%; transform-origin:left; transform:scaleX(1); }
+    #hpfill { background:linear-gradient(90deg,#c0392b,#e67e22); }
+    #brfill { background:linear-gradient(90deg,#3aa6d9,#8be0ff); }
+    #crosshair { left:50%; top:50%; width:1.2vmin; height:1.2vmin; margin:-.6vmin 0 0 -.6vmin; border:2px solid rgba(255,255,255,.85); border-radius:50%; box-shadow:0 0 3px #000; }
+    #hitmark { left:50%; top:50%; width:5vmin; height:5vmin; margin:-2.5vmin 0 0 -2.5vmin; opacity:0; transition:opacity .25s; }
+    #hitmark::before, #hitmark::after { content:""; position:absolute; left:50%; top:0; width:3px; height:100%; background:#fff; transform:translateX(-50%) rotate(45deg); }
+    #hitmark::after { transform:translateX(-50%) rotate(-45deg); }
+    #hitmark.kill::before, #hitmark.kill::after { background:#ff3b30; }
+    #popups { left:50%; top:24vmin; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:.6vmin; }
+    .pop { font-weight:800; font-size:3.4vmin; text-shadow:0 2px 4px #000; animation:pop 1.8s ease-out forwards; white-space:nowrap; }
+    .pop.good { color:#ffd54a; } .pop.bad { color:#ff5a4a; } .pop.info { color:#fff; }
+    @keyframes pop { 0%{opacity:0; transform:translateY(8px) scale(.9);} 12%{opacity:1; transform:none;} 80%{opacity:1;} 100%{opacity:0; transform:translateY(-14px);} }
+    #dmg { inset:0; background:radial-gradient(ellipse at center, rgba(255,0,0,0) 35%, rgba(190,0,0,.75) 100%); opacity:0; }
+    #dmgdir { left:50%; top:50%; width:0; height:0; opacity:0; }
+    #dmgdir > div { position:absolute; left:-9vmin; top:-40vmin; width:18vmin; height:4vmin; border-radius:50%;
+      background:radial-gradient(ellipse at center, rgba(255,40,30,.95), rgba(255,40,30,0) 70%); }
+    #banner { left:50%; top:9vmin; transform:translateX(-50%); text-align:center; background:var(--panel); padding:1.2vmin 3vmin; border-radius:10px;
+      border:1px solid rgba(255,255,255,.2); font-size:2.8vmin; max-width:80vw; opacity:0; transition:opacity .5s; }
+    #banner b { color:var(--accent); display:block; font-size:3.4vmin; }
+
+    /* ---------- Boutons tactiles ---------- */
+    #controls { position:fixed; inset:0; z-index:4; pointer-events:none; }
+    .btn { position:absolute; pointer-events:auto; touch-action:none; border-radius:50%; display:flex; align-items:center; justify-content:center;
+      text-align:center; font-weight:800; letter-spacing:.05em; font-size:2.6vmin; line-height:1.1; color:#fff;
+      background:rgba(20,26,15,.55); border:2px solid rgba(255,255,255,.55); box-shadow:0 2px 8px rgba(0,0,0,.5); }
+    .btn.down { background:rgba(255,179,71,.65); transform:scale(.94); }
+    #bFire { right:max(5vmin, env(safe-area-inset-right)); bottom:7vmin; width:23vmin; height:23vmin; font-size:3.6vmin; background:rgba(190,40,30,.5); }
+    #bScope { right:max(30vmin, env(safe-area-inset-right)); bottom:5vmin; width:15vmin; height:15vmin; }
+    #bZoom { right:max(30vmin, env(safe-area-inset-right)); bottom:22vmin; width:12vmin; height:12vmin; font-size:2.4vmin; }
+    #bBreath { left:max(5vmin, env(safe-area-inset-left)); bottom:7vmin; width:19vmin; height:19vmin; }
+    #bReload { left:max(26vmin, env(safe-area-inset-left)); bottom:5vmin; width:14vmin; height:14vmin; }
+    #bPause { left:50%; top:2vmin; transform:translateX(-50%); width:9vmin; height:6vmin; border-radius:10px; font-size:2.6vmin; }
+    #bPause.down { transform:translateX(-50%) scale(.94); }
+
+    /* ---------- Menus ---------- */
+    .overlay { position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+      padding:4vmin 4vmin 6vmin; overflow-y:auto; touch-action:pan-y;
+      background:linear-gradient(180deg, rgba(5,10,5,.88), rgba(10,16,8,.94)); }
+    .overlay.clear { background:rgba(0,0,0,.6); justify-content:center; }
+    h1 { margin:1vmin 0; font-size:8vmin; letter-spacing:.22em; text-transform:uppercase; color:var(--accent); text-shadow:0 0 18px rgba(255,179,71,.4); text-align:center; }
+    h2 { margin:.5vmin 0 2vmin; font-size:5vmin; letter-spacing:.12em; text-transform:uppercase; text-align:center; }
+    .sub { opacity:.7; font-size:2.6vmin; letter-spacing:.3em; text-transform:uppercase; margin-bottom:3vmin; text-align:center; }
+    #missions { display:grid; grid-template-columns:repeat(auto-fit, minmax(42vmin, 1fr)); gap:1.6vmin; width:min(100%, 130vmin); }
+    .mcard { display:flex; align-items:center; gap:2vmin; text-align:left; color:var(--ink); font:inherit; cursor:pointer;
+      background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.22); border-radius:12px; padding:1.8vmin 2.2vmin; touch-action:manipulation; }
+    .mcard:active { background:rgba(255,179,71,.25); }
+    .mcard.locked { opacity:.4; }
+    .mn { font-size:6vmin; font-weight:900; color:var(--accent); min-width:6vmin; text-align:center; }
+    .mt { display:flex; flex-direction:column; flex:1; font-size:3vmin; }
+    .mt small { opacity:.7; font-size:2.2vmin; margin-top:.4vmin; }
+    .mb { font-size:2.4vmin; color:#ffd54a; font-weight:700; }
+    .row { display:flex; align-items:center; gap:2vmin; margin-top:3vmin; font-size:2.4vmin; }
+    .row input[type=range] { width:30vmin; accent-color:var(--accent); }
+    .help { margin-top:2.4vmin; max-width:120vmin; font-size:2.1vmin; line-height:1.5; opacity:.75; text-align:center; }
+    .bigbtn { font:inherit; font-weight:800; letter-spacing:.1em; text-transform:uppercase; font-size:3vmin; color:#111; background:var(--accent);
+      border:0; border-radius:12px; padding:1.6vmin 4vmin; margin:1vmin; cursor:pointer; touch-action:manipulation; }
+    .bigbtn.alt { background:rgba(255,255,255,.14); color:var(--ink); border:1px solid rgba(255,255,255,.3); }
+    #endstats { display:grid; grid-template-columns:auto auto; gap:.6vmin 4vmin; font-size:3vmin; margin:1.5vmin 0 2.5vmin; }
+    #endstats b { color:#ffd54a; text-align:right; }
+    #endtitle.win { color:#7bdc6a; } #endtitle.lose { color:#ff5a4a; }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <canvas id="scope"></canvas>
+  <div id="touch"></div>
+
+  <div id="hud" class="hidden">
+    <div id="topleft">
+      <div class="chip"><small>Cibles</small><span id="objv">0/0</span></div>
+      <div class="chip"><small>Temps</small><span id="timer">00:00</span></div>
+      <div class="chip" id="wind">
+        <svg id="windarrow" viewBox="0 0 40 40"><path d="M20 3 L31 20 L23 20 L23 37 L17 37 L17 20 L9 20 Z" fill="#ffb347" stroke="#000" stroke-width="1.5"/></svg>
+        <span><small>Vent</small><span id="windv">0.0</span> m/s</span>
+      </div>
+      <div class="chip"><small>Score</small><span id="scorev">0</span></div>
+    </div>
+    <canvas id="radar" width="160" height="160"></canvas>
+    <div id="dist" class="chip">--- m</div>
+    <div id="zoomlabel" class="chip">4x</div>
+    <div id="status">
+      <div id="ammo">5 / 12</div>
+      <div class="bar"><div id="hpfill"></div></div>
+      <div class="bar"><div id="brfill"></div></div>
+    </div>
+    <div id="crosshair"></div>
+    <div id="hitmark"></div>
+    <div id="popups"></div>
+    <div id="dmg"></div>
+    <div id="dmgdir"><div></div></div>
+    <div id="banner"></div>
+  </div>
+
+  <div id="controls" class="hidden">
+    <div class="btn" id="bFire">TIR</div>
+    <div class="btn" id="bScope">LUNETTE</div>
+    <div class="btn" id="bZoom">ZOOM</div>
+    <div class="btn" id="bBreath">RETENIR<br>SOUFFLE</div>
+    <div class="btn" id="bReload">RECHARGER</div>
+    <div class="btn" id="bPause">II</div>
+  </div>
+
+  <div id="menu" class="overlay">
+    <h1>Élite Sniper</h1>
+    <div class="sub">Choisissez une mission</div>
+    <div id="missions"></div>
+    <div class="row">
+      <label for="sens">Sensibilité</label>
+      <input id="sens" type="range" min="0.5" max="3" step="0.1" value="1.5" />
+    </div>
+    <div class="help">
+      Glissez le doigt pour viser · <b>LUNETTE</b> pour zoomer · <b>RETENIR SOUFFLE</b> pour stabiliser · <b>TIR</b> pour tirer.<br />
+      Compensez la chute de balle et le vent (flèche en haut à gauche). Éliminez les cibles sans vous faire repérer.<br />
+      PC : clic = verrouiller la souris / tirer · clic droit ou X = lunette · Z = zoom · Maj = souffle · R = recharger · Échap = pause
+    </div>
+  </div>
+
+  <div id="pause" class="overlay clear hidden">
+    <h2>Pause</h2>
+    <button class="bigbtn" id="btnResume">Reprendre</button>
+    <button class="bigbtn alt" id="btnPauseMenu">Menu</button>
+  </div>
+
+  <div id="end" class="overlay clear hidden">
+    <h2 id="endtitle">Mission</h2>
+    <div id="endreason" class="sub"></div>
+    <div id="endstats"></div>
+    <div>
+      <button class="bigbtn" id="btnNext">Mission suivante</button>
+      <button class="bigbtn alt" id="btnRetry">Rejouer</button>
+      <button class="bigbtn alt" id="btnEndMenu">Menu</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
